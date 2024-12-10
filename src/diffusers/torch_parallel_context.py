@@ -5,7 +5,7 @@ from contextlib import nullcontext
 import torch
 import os
 
-from yfusers.parallel_context import (
+from diffusers.parallel_context import (
     AsyncMode,
     AsyncModeContext,
     ParallelContext,

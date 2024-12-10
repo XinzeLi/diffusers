@@ -41,8 +41,8 @@ from diffusers.utils.torch_utils import randn_tensor
 from yfusers.pipelines.pipeline_utils import DiffusionPipeline
 from .pipeline_output import StableDiffusion3PipelineOutput
 
-from yfusers.torch_parallel_context import TorchBasedParallelContext
-from yfusers.postal_service import (
+from diffusers.torch_parallel_context import TorchBasedParallelContext
+from diffusers.postal_service import (
     Shipment,
     PostalService,
 )

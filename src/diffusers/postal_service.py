@@ -1,7 +1,7 @@
 import torch
 
 from typing import List, Union, Optional
-from crossing.core.parallel_context import ParallelContext
+from diffusers.parallel_context import ParallelContext
 
 support_type = [
     torch.float32,

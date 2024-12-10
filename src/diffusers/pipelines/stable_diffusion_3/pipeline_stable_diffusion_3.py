@@ -22,7 +22,7 @@ from transformers import (
     T5EncoderModel,
     T5TokenizerFast,
 )
-
+import torch.distributed as dist
 from ...image_processor import VaeImageProcessor
 from ...loaders import FromSingleFileMixin, SD3LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
@@ -39,6 +39,34 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import StableDiffusion3PipelineOutput
+
+from diffusers.torch_parallel_context import TorchBasedParallelContext
+from diffusers.postal_service import (
+    Shipment,
+    PostalService,
+)
+from diffusers.parallel_state import (
+    get_cfg_group,
+    get_classifier_free_guidance_rank,
+    get_classifier_free_guidance_world_size,
+    get_pipeline_parallel_rank,
+    get_pipeline_parallel_world_size,
+    get_pp_group,
+    get_ring_parallel_rank,
+    get_ring_parallel_world_size,
+    get_sequence_parallel_rank,
+    get_sequence_parallel_world_size,
+    get_sp_group,
+    get_ulysses_parallel_rank,
+    get_ulysses_parallel_world_size,
+    get_world_group,
+    generate_masked_orthogonal_rank_groups,
+    is_pipeline_first_stage,
+    is_pipeline_last_stage,
+)
+from diffusers.runtime_state import(
+    get_runtime_state,
+)
 
 
 if is_torch_xla_available():
@@ -179,6 +207,19 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         tokenizer_3: T5TokenizerFast,
     ):
         super().__init__()
+        # ---------------ADD BELOW---------------
+        self.world_size = get_pp_group().world_size
+        self.local_rank = get_pp_group().local_rank
+
+        self.parallel_ctx = TorchBasedParallelContext(
+            ranks=list(range(self.world_size)),
+            pipeline_parallel_size=self.world_size,
+            device_index=self.local_rank,
+        )
+        self.post_office = PostalService(self.parallel_ctx)
+        self.shipment = Shipment(self.parallel_ctx.torch_device())
+
+        #----------------ADD ABOVE------------------
 
         self.register_modules(
             vae=vae,
@@ -668,6 +709,31 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
     @property
     def interrupt(self):
         return self._interrupt
+    
+    def _process_cfg_split_batch(
+        self,
+        concat_group_0_negative: torch.Tensor,
+        concat_group_0: torch.Tensor,
+        concat_group_1_negative: torch.Tensor,
+        concat_group_1: torch.Tensor,
+    ):
+        r"""
+        if not using cfg parallel, then the function return as previously commented version.
+        if use cfg parallel, this function assign rank 0 device with negative prompt (namely null prompty “”), 
+        and assign rank1 device with positive prompt.
+        """
+        if get_classifier_free_guidance_world_size() == 1:
+            concat_group_0 = torch.cat([concat_group_0_negative, concat_group_0], dim=0)
+            concat_group_1 = torch.cat([concat_group_1_negative, concat_group_1], dim=0)
+        elif get_classifier_free_guidance_rank() == 0:
+            concat_group_0 = concat_group_0_negative
+            concat_group_1 = concat_group_1_negative
+        elif get_classifier_free_guidance_rank() == 1:
+            concat_group_0 = concat_group_0
+            concat_group_1 = concat_group_1
+        else:
+            raise ValueError("Invalid classifier free guidance rank")
+        return concat_group_0, concat_group_1
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -875,12 +941,23 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             lora_scale=lora_scale,
         )
 
+        # if self.do_classifier_free_guidance:
+        #     if skip_guidance_layers is not None:
+        #         original_prompt_embeds = prompt_embeds
+        #         original_pooled_prompt_embeds = pooled_prompt_embeds
+        #     prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+        #     pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
         if self.do_classifier_free_guidance:
-            if skip_guidance_layers is not None:
-                original_prompt_embeds = prompt_embeds
-                original_pooled_prompt_embeds = pooled_prompt_embeds
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
+            (
+                prompt_embeds,
+                pooled_prompt_embeds,
+            ) = self._process_cfg_split_batch(
+                negative_prompt_embeds,
+                prompt_embeds,
+                negative_pooled_prompt_embeds,
+                pooled_prompt_embeds,
+            )
+
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
