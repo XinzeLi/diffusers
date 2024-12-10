@@ -6,7 +6,7 @@ from argparse import Namespace
 
 import numpy as np
 import torch
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+# from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 
 from diffusers.parallel_state import (
     get_pp_group,
@@ -37,16 +37,17 @@ class DiTRuntimeState(RuntimeState):
     pp_patches_token_num: Optional[List[int]]
     max_condition_sequence_length: int
 
-    def __init__(self, pipeline: DiffusionPipeline, config):
+    def __init__(self, config):
         super().__init__(config)
         self.patch_mode = False
         self.pipeline_patch_idx = 0
         self._set_model_parameters(
-            vae_scale_factor=pipeline.vae_scale_factor,
+            # vae_scale_factor=pipeline.vae_scale_factor,
             # backbone_patch_size=pipeline.transformer.config.patch_size,
             # backbone_in_channel=pipeline.transformer.config.in_channels,
             # backbone_inner_dim=pipeline.transformer.config.num_attention_heads
             # * pipeline.transformer.config.attention_head_dim,
+            vae_scale_factor=8,
             backbone_patch_size=2,
             backbone_in_channel=16,
             backbone_inner_dim=24 * 64
@@ -174,10 +175,10 @@ class DiTRuntimeState(RuntimeState):
         get_pp_group().reset_buffer()
         get_pp_group.set_config(self, dtype=torch.float16)
 
-def initialize_runtime_state(pipeline: DiffusionPipeline, engine_config):
+def initialize_runtime_state(engine_config):
     global _RUNTIME
-    if hasattr(pipeline, "transformer"):
-        _RUNTIME = DiTRuntimeState(pipeline=pipeline, config=engine_config)
+
+    _RUNTIME = DiTRuntimeState(config=engine_config)
 
 def get_runtime_state():
     assert _RUNTIME is not None, "Runtime state has not been initialized."

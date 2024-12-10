@@ -985,7 +985,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 last_hidden_states = latents
                 
 
-                latents = self._backbone_forward(
+                latents, encoder_hidden_states = self._backbone_forward(
                     latents=latents,
                     encoder_hidden_states=(
                         prompt_embeds
@@ -1056,7 +1056,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timestep = t.expand(latents.shape[0])
 
-        noise_pred = self.transformer(
+        noise_pred, encoder_hidden_states = self.transformer(
             hidden_states=latents,
             timestep=timestep,
             encoder_hidden_states=encoder_hidden_states,
@@ -1080,4 +1080,4 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         else:
             latents = noise_pred
 
-        return latents
+        return latents, encoder_hidden_states

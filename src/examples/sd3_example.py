@@ -4,7 +4,6 @@ import torch
 import torch.distributed
 from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3 import StableDiffusion3Pipeline
 import argparse
-from diffusers.models.autoencoders.autoencoder_kl import AutoencoderKL
 # from distvae.modules.adapters.vae.decoder_adapters import DecoderAdapter
 from diffusers.group_coordinator import (
     GroupCoordinator, 
@@ -189,7 +188,7 @@ def main():
         ulysses_degree=ulysses_degree,
         ring_degree=ring_degree,
     ).to(f"cuda:{local_rank}")
-    initialize_runtime_state(pipeline=pipe, engine_config=args)
+    initialize_runtime_state(engine_config=args)
     
 
     if pipe.transformer is not None and PP_degree > 1:

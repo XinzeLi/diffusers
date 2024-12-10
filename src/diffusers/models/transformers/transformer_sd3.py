@@ -32,6 +32,8 @@ from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_lay
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..embeddings import CombinedTimestepTextProjEmbeddings, PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
+from diffusers.parallel_state import is_pipeline_first_stage, is_pipeline_last_stage, get_pipeline_parallel_world_size
+from diffusers.runtime_state import get_runtime_state
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -183,6 +185,9 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
         self.gradient_checkpointing = False
+
+        # xinze: here is a cache!!!
+        self.encoder_hidden_states_cache = [None for _ in range(len(self.transformer_blocks))]
 
     # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
     def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
@@ -383,12 +388,19 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 logger.warning(
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
-
+        patch_size = self.config.patch_size
         height, width = hidden_states.shape[-2:]
+        height = height // (patch_size * get_pipeline_parallel_world_size())
+        width = width // patch_size
 
-        hidden_states = self.pos_embed(hidden_states)  # takes care of adding positional embeddings too.
+        # hidden_states = self.pos_embed(hidden_states)  # takes care of adding positional embeddings too.
+        # temb = self.time_text_embed(timestep, pooled_projections)
+        # encoder_hidden_states = self.context_embedder(encoder_hidden_states)
         temb = self.time_text_embed(timestep, pooled_projections)
-        encoder_hidden_states = self.context_embedder(encoder_hidden_states)
+        if is_pipeline_first_stage(): # only pp rank 0 needs patchify
+            hidden_states = self.pos_embed(hidden_states)
+            encoder_hidden_states = self.context_embedder(encoder_hidden_states)
+
 
         for index_block, block in enumerate(self.transformer_blocks):
             # Skip specified layers
@@ -414,34 +426,71 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                     **ckpt_kwargs,
                 )
             elif not is_skip:
-                encoder_hidden_states, hidden_states = block(
-                    hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
-                )
+                # encoder_hidden_states, hidden_states = block(
+                #     hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
+                # )
+                if get_pipeline_parallel_world_size() > 1:
+                    if get_runtime_state().pipeline_patch_idx == 0:
+                        self.encoder_hidden_states_cache[index_block] = encoder_hidden_states
+                        encoder_hidden_states, hidden_states = block(
+                            hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
+                        )
+                    else:
+                        _, hidden_states = block(
+                            hidden_states=hidden_states, encoder_hidden_states=self.encoder_hidden_states_cache[index_block], temb=temb
+                        )
+                else:
+                    encoder_hidden_states, hidden_states = block(
+                        hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
+                    )
 
             # controlnet residual
             if block_controlnet_hidden_states is not None and block.context_pre_only is False:
                 interval_control = len(self.transformer_blocks) / len(block_controlnet_hidden_states)
                 hidden_states = hidden_states + block_controlnet_hidden_states[int(index_block / interval_control)]
 
-        hidden_states = self.norm_out(hidden_states, temb)
-        hidden_states = self.proj_out(hidden_states)
+        # hidden_states = self.norm_out(hidden_states, temb)
+        # hidden_states = self.proj_out(hidden_states)
 
-        # unpatchify
-        patch_size = self.config.patch_size
-        height = height // patch_size
-        width = width // patch_size
+        # # unpatchify
+        # patch_size = self.config.patch_size
+        # height = height // patch_size
+        # width = width // patch_size
 
-        hidden_states = hidden_states.reshape(
-            shape=(hidden_states.shape[0], height, width, patch_size, patch_size, self.out_channels)
-        )
-        hidden_states = torch.einsum("nhwpqc->nchpwq", hidden_states)
-        output = hidden_states.reshape(
-            shape=(hidden_states.shape[0], self.out_channels, height * patch_size, width * patch_size)
-        )
+        # hidden_states = hidden_states.reshape(
+        #     shape=(hidden_states.shape[0], height, width, patch_size, patch_size, self.out_channels)
+        # )
+        # hidden_states = torch.einsum("nhwpqc->nchpwq", hidden_states)
+        # output = hidden_states.reshape(
+        #     shape=(hidden_states.shape[0], self.out_channels, height * patch_size, width * patch_size)
+        # )
 
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
+        # if USE_PEFT_BACKEND:
+        #     # remove `lora_scale` from each PEFT layer
+        #     unscale_lora_layers(self, lora_scale)
+        if is_pipeline_last_stage():
+
+            hidden_states = self.norm_out(hidden_states, temb)
+            hidden_states = self.proj_out(hidden_states)
+
+            # unpatchify
+            patch_size = self.config.patch_size
+            # height = height // patch_size
+            # width = width // patch_size
+
+            hidden_states = hidden_states.reshape(
+                shape=(hidden_states.shape[0], height, width, patch_size, patch_size, self.out_channels)
+            )
+            hidden_states = torch.einsum("nhwpqc->nchpwq", hidden_states)
+            output = (hidden_states.reshape(
+                shape=(hidden_states.shape[0], self.out_channels, height * patch_size, width * patch_size)
+            ), None,)
+
+            if USE_PEFT_BACKEND:
+                # remove `lora_scale` from each PEFT layer
+                unscale_lora_layers(self, lora_scale)
+        else:
+            output = hidden_states, encoder_hidden_states
 
         if not return_dict:
             return (output,)
