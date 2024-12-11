@@ -37,6 +37,7 @@ def convert_transformer(
     blocks_list = {
         block_name: getattr(transformer, block_name) for block_name in blocks_name
     }
+    print(f"the blocks list is {blocks_list}")
     num_blocks_list = [len(blocks) for blocks in blocks_list.values()]
     blocks_idx = {
         name: [sum(num_blocks_list[:i]), sum(num_blocks_list[: i + 1])]
