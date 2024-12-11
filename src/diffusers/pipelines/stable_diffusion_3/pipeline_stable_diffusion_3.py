@@ -1063,7 +1063,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         sync_only: bool = False,
     ):
-        get_runtime_state().set_patch_mode(False)
+        get_runtime_state().set_patch_mode(patch_mode=False)
         for i, t in enumerate(timesteps):
             if self.interrupt:
                 continue
@@ -1137,7 +1137,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         self,
         latents: torch.Tensor,
     ):
-        get_runtime_state().set_patch_mode(True)
+        get_runtime_state().set_patch_mode(patch_mode=True)
         if is_pipeline_first_stage():
             latents = self.post_office.recv_shipment().content["hidden_states"]
             patch_latents = list(latents.split(get_runtime_state().pp_patches_height, dim=2))

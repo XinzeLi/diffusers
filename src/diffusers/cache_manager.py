@@ -40,13 +40,13 @@ class CacheManager:
             kv_cache = new_kv
             self.cache[layer_type, layer].tensors[0] = kv_cache
         else:
-            start_token_idx = get_runtime_state().pp_patches_start_idx_local[
+            start_token_idx = get_runtime_state().pp_patches_token_start_idx_local[
                 get_runtime_state().pipeline_patch_idx
             ]
-            end_token_idx = get_runtime_state().pp_patches_start_idx_local[
+            end_token_idx = get_runtime_state().pp_patches_token_start_idx_local[
                 get_runtime_state().pipeline_patch_idx + 1
             ]
-            kv_cache = self.cache[layer, layer].tensors[0]
+            kv_cache = self.cache[layer_type, layer].tensors[0]
             kv_cache = self._update_kv_in_dim(
                 kv_cache=kv_cache,
                 new_kv=new_kv,
@@ -55,7 +55,10 @@ class CacheManager:
                 end_idx=end_token_idx,
             )
             self.cache[layer_type, layer].tensors[0] = kv_cache
-        return kv_cache
+        if return_list:
+            return torch.chunk(kv_cache, 2, dim=-1)
+        else:
+            return kv_cache
     
     def _update_kv_in_dim(
         self,
@@ -66,7 +69,7 @@ class CacheManager:
         end_idx: int,
     ):
         if dim < 0:
-            dim +=kv_cache.dim()
+            dim += kv_cache.dim()
 
         if dim == 0:
             kv_cache[start_idx:end_idx, ...] = new_kv

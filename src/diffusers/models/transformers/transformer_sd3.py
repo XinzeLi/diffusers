@@ -432,13 +432,12 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 # encoder_hidden_states, hidden_states = block(
                 #     hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
                 # )
-                if get_pipeline_parallel_world_size() > 1:
-                    if get_runtime_state().pipeline_patch_idx == 0:
-                        self.encoder_hidden_states_cache[index_block] = encoder_hidden_states
-                        encoder_hidden_states, hidden_states = block(
-                            hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
-                        )
-                    else:
+                if get_runtime_state().patch_mode and get_runtime_state().pipeline_patch_idx == 0:
+                    self.encoder_hidden_states_cache[index_block] = encoder_hidden_states
+                    encoder_hidden_states, hidden_states = block(
+                        hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
+                    )
+                elif get_runtime_state().patch_mode:
                         _, hidden_states = block(
                             hidden_states=hidden_states, encoder_hidden_states=self.encoder_hidden_states_cache[index_block], temb=temb
                         )
