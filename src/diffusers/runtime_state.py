@@ -52,6 +52,7 @@ class DiTRuntimeState(RuntimeState):
             backbone_in_channel=16,
             backbone_inner_dim=24 * 64
         )
+        self._calc_patches_metadata()
 
     def next_patch(self):
         if self.patch_mode:
@@ -104,13 +105,13 @@ class DiTRuntimeState(RuntimeState):
         ) // pipeline_patches_height
 
         pipeline_patches_height_list = [
-            pipeline_patches_height for _ in range(num_pipeline_patch) - 1
+            pipeline_patches_height for _ in range(num_pipeline_patch-1)
         ]
 
         the_last_pp_patch_height = latents_height - pipeline_patches_height * (
             num_pipeline_patch - 1
         )
-        pipeline_patches_height.append(the_last_pp_patch_height)
+        pipeline_patches_height_list.append(the_last_pp_patch_height)
 
         flatten_patches_height = [
             pp_patch_height // num_sp_patches

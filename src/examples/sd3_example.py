@@ -11,7 +11,7 @@ from diffusers.group_coordinator import (
     SequenceParallelGroupCoordinator, 
     PipelineParallelGroupCoordinator,
 )
-from diffusers.runtime_state import initialize_runtime_state
+from diffusers.runtime_state import initialize_runtime_state, get_runtime_state
 from typing import Any, Dict, List, Optional, Tuple, Union
 from diffusers.parallel_state import (
     init_model_parallel_group,
@@ -21,6 +21,7 @@ from diffusers.parallel_state import (
     get_world_group,
     get_pipeline_parallel_rank,
     get_pipeline_parallel_world_size,
+    is_pipeline_last_stage,
 )
 import torch.nn as nn
 
@@ -208,14 +209,15 @@ def main():
         # f"dp{args.data_parallel_degree}_cfg{engine_config.parallel_config.cfg_degree}_"
         f"ulysses{args.ulysses_degree}_ring{args.ring_degree}_"
         f"pp{args.pipefusion_parallel_degree}"
-    )    
-    image=output.images[0]
-    if not os.path.exists("results"):
-        os.mkdir("results")
-    image.save(f"./results/SD3_result_{parallel_info}_rank{local_rank}.png")
-    print(f"image saved to ./results/SD3_result_{parallel_info}_rank{local_rank}.png")
-    if get_world_group().rank == get_world_group().world_size - 1:
-        print(f"used time: {end_time-start_time:.2f} seconds")
+    )
+    if is_pipeline_last_stage():
+        image=output.images[0]
+        if not os.path.exists("results"):
+            os.mkdir("results")
+        image.save(f"./results/SD3_result_{parallel_info}_rank{local_rank}.png")
+        print(f"image saved to ./results/SD3_result_{parallel_info}_rank{local_rank}.png")
+        if get_world_group().rank == get_world_group().world_size - 1:
+            print(f"used time: {end_time-start_time:.2f} seconds")
 
 if __name__ == "__main__":
     main()

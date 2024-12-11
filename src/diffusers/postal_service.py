@@ -444,7 +444,7 @@ class PostalService:
         )
         logger.info(f"{len(shipment.buffer)=} is sending")
         self.parallel_ctx.send_to_next_stage(shipment.buffer)
-        logger.info(f"Send: {shipment.buffer.shape=} is buffer")
+        #logger.info(f"Send: {shipment.buffer.shape=} is buffer")
 
     def recv_shipment(self) -> Shipment:
         logger.info(f"{self.send_recv_comm_device=} is receiving shape")
@@ -464,7 +464,7 @@ class PostalService:
             requires_grad=False,
         )
         self.parallel_ctx.recv_from_prev_stage(buffer)
-        logger.info(f"Receive: {buffer.shape=} is buffer")
+        #logger.info(f"Receive: {buffer.shape=} is buffer")
         return Shipment.from_buffer(buffer, self.parallel_ctx.torch_device())
 
     def exchange_shipment(self, shipment: Shipment) -> Shipment:
