@@ -2,6 +2,7 @@ import torch
 
 from typing import List, Union, Optional
 from diffusers.parallel_context import ParallelContext
+from loguru import logger
 
 support_type = [
     torch.float32,
@@ -434,22 +435,28 @@ class PostalService:
 
     def send_shipment(self, shipment: Shipment):
         # Pack items before shipping
+
+        logger.info(f"{self.send_recv_comm_device=} is sending shape")
         self.parallel_ctx.send_to_next_stage(
             torch.tensor(
                 [len(shipment.buffer)], device=self.send_recv_comm_device
             )
         )
+        logger.info(f"{len(shipment.buffer)=} is sending")
         self.parallel_ctx.send_to_next_stage(shipment.buffer)
+        logger.info(f"Send: {shipment.buffer.shape=} is buffer")
 
     def recv_shipment(self) -> Shipment:
+        logger.info(f"{self.send_recv_comm_device=} is receiving shape")
         shipment_volume = torch.empty(
             [1],
             dtype=torch.int64,
             device=self.send_recv_comm_device,
             requires_grad=False,
         )
-        print(f"the shipment volume is {shipment_volume}")
         self.parallel_ctx.recv_from_prev_stage(shipment_volume)
+        logger.info(f"{shipment_volume=} is receiving")
+        
         buffer = torch.empty(
             shipment_volume.tolist(),
             dtype=byte_type,
@@ -457,6 +464,7 @@ class PostalService:
             requires_grad=False,
         )
         self.parallel_ctx.recv_from_prev_stage(buffer)
+        logger.info(f"Receive: {buffer.shape=} is buffer")
         return Shipment.from_buffer(buffer, self.parallel_ctx.torch_device())
 
     def exchange_shipment(self, shipment: Shipment) -> Shipment:

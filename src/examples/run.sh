@@ -1,7 +1,7 @@
 set -x
 
 export PYTHONPATH=$PWD:$PYTHONPATH
-export CUDA_VISIBLE_DEVICES=4,7
+export CUDA_VISIBLE_DEVICES=1,3
 # export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 
 # # Select the model type
@@ -31,8 +31,8 @@ TASK_ARGS="--height 1024 --width 1024"
 
 
 # On 8 gpus, pp=2, ulysses=2, ring=1, cfg_parallel=2 (split batch)
-N_GPUS=1
-PARALLEL_ARGS="--pipefusion_parallel_degree 1 --ulysses_degree 1 --ring_degree 1"
+N_GPUS=2
+PARALLEL_ARGS="--pipefusion_parallel_degree 2 --ulysses_degree 1 --ring_degree 1"
 
 # CFG_ARGS="--use_cfg_parallel"
 

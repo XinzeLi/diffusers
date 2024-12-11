@@ -389,9 +389,12 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
         patch_size = self.config.patch_size
-        height, width = hidden_states.shape[-2:]
-        height = height // (patch_size * get_pipeline_parallel_world_size())
-        width = width // patch_size
+        # height, width = hidden_states.shape[-2:]
+        height, width = get_runtime_state().config.height, get_runtime_state().config.width
+        height = height // (patch_size * 8) # 8 is vae scale factor
+        width = width // (patch_size * 8)
+        if get_runtime_state().patch_mode:
+            height = height // get_pipeline_parallel_world_size()
 
         # hidden_states = self.pos_embed(hidden_states)  # takes care of adding positional embeddings too.
         # temb = self.time_text_embed(timestep, pooled_projections)
