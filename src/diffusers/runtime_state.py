@@ -165,7 +165,7 @@ class DiTRuntimeState(RuntimeState):
         self.pp_patches_start_idx_local = pp_patches_start_idx_local
         self.pp_patches_start_end_idx_global = pp_patches_start_end_idx_global
         self.pp_patches_token_start_idx_local = pp_patches_token_start_idx_local
-        self.pp_patches_start_end_idx_global = (
+        self.pp_patches_token_start_end_idx_global = (
             pp_patches_token_start_end_idx_global
         )
 

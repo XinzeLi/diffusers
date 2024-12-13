@@ -1,7 +1,7 @@
 set -x
 
 export PYTHONPATH=$PWD:$PYTHONPATH
-export CUDA_VISIBLE_DEVICES=1,3
+export CUDA_VISIBLE_DEVICES=4,7
 # export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 
 # # Select the model type
@@ -59,7 +59,7 @@ $TASK_ARGS \
 $PIPEFUSION_ARGS \
 $OUTPUT_ARGS \
 --num_inference_steps $INFERENCE_STEP \
---prompt "a female character with long, flowing hair that appears to be made of ethereal, swirling patterns resembling the Northern Lights or Aurora Borealis. The background is dominated by deep blues and purples, creating a mysterious and dramatic atmosphere. The character's face is serene, with pale skin and striking features. She wears a dark-colored outfit with subtle patterns. The overall style of the artwork is reminiscent of fantasy or supernatural genres." \
+--prompt "A female character with long, flowing hair that appears to be made of ethereal, swirling patterns resembling the Northern Lights or Aurora Borealis. The background is dominated by deep blues and purples, creating a mysterious and dramatic atmosphere. The character's face is serene, with pale skin and striking features. She wears a dark-colored outfit with subtle patterns. The overall style of the artwork is reminiscent of fantasy or supernatural genres." \
 $PARALLLEL_VAE \
 $CFG_ARGS 
 

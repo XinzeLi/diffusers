@@ -11,8 +11,13 @@ from diffusers.group_coordinator import (
     SequenceParallelGroupCoordinator, 
     PipelineParallelGroupCoordinator,
 )
+from deepspeed.module_inject import replace_module
 from diffusers.runtime_state import initialize_runtime_state, get_runtime_state
 from typing import Any, Dict, List, Optional, Tuple, Union
+from torch import nn
+from diffusers.models.embeddings import PatchEmbed
+from diffusers.conv import CustomConv2d
+from diffusers.embedding import CustomPatchEmbed
 from diffusers.parallel_state import (
     init_model_parallel_group,
     init_world_group,
@@ -91,6 +96,48 @@ def convert_transformer(
                 # self.stage_info.after_flags[name] = False
 
     return transformer
+
+def _change_layer(submodule):
+    if isinstance(submodule, nn.Conv2d):
+        return CustomConv2d(conv2d=submodule)
+    elif isinstance(submodule, PatchEmbed):
+        # print("YYYYYYYYYYY")
+        return CustomPatchEmbed(patch_embedding=submodule)
+    else:
+        return submodule
+
+
+def change_conv_embed(model: nn.Module, submodule_classes_to_change=[nn.Conv2d, PatchEmbed]):
+    if model is None:
+        return None
+    for name, module in model.named_children():
+        need_change = False
+        for class_to_change in submodule_classes_to_change:
+            if isinstance(module, class_to_change):
+                need_change = True
+                break
+        if need_change:
+            print(f"the module {name} is changing!!!")
+            new_layer = _change_layer(module)
+            setattr(model, name, new_layer)
+
+        for subname, submodule in module.named_children():
+            need_change = False
+            for class_to_change in submodule_classes_to_change:
+                if isinstance(submodule, class_to_change):
+                    need_change = True
+                    break
+            if need_change:
+                print(f"the submodule {subname} is changing!!!")
+                new_layer = _change_layer(submodule)
+                setattr(module, subname, new_layer)
+
+    # model = replace_module(model=model, orig_class=nn.Conv2d, replace_fn=_change_layer)
+    # model = replace_module(model=model, orig_class=PatchEmbed, replace_fn=_change_layer)
+
+    return model
+
+
 
 
 def main():
@@ -180,6 +227,13 @@ def main():
         ring_degree=ring_degree,
         pipeline_parallel_degree=PP_degree,
     )
+    initialize_runtime_state(engine_config=args)
+
+    # origin_conv2d = nn.Conv2d
+    # nn.Conv2d = CustomConv2d(conv2d=origin_conv2d)
+    # origin_PatchEmbed = embeddings.PatchEmbed
+    # embeddings.PatchEmbed = CustomPatchEmbed(patch_embedding=origin_PatchEmbed)
+
     local_rank= int(os.environ.get("LOCAL_RANK", "0"))
     pipe = StableDiffusion3Pipeline.from_pretrained(
         pretrained_model_name_or_path=args.model,
@@ -190,12 +244,14 @@ def main():
         ulysses_degree=ulysses_degree,
         ring_degree=ring_degree,
     ).to(f"cuda:{local_rank}")
-    initialize_runtime_state(engine_config=args)
+    
+    
     
 
     if pipe.transformer is not None and PP_degree > 1:
         pipe.transformer = convert_transformer(pipe.transformer)
-    start_time = time.time()
+        pipe.transformer = change_conv_embed(model=pipe.transformer)
+    
     # pipe.prepare_run(input_config)
     output = pipe(
         height=1024,
@@ -205,6 +261,17 @@ def main():
         # output_type=args.output_type,
         generator=torch.Generator(device="cuda").manual_seed(42),
     )
+    
+    start_time = time.time()
+    for i in range(3):
+        output = pipe(
+            height=1024,
+            width=1024,
+            prompt=args.prompt,
+            num_inference_steps=args.num_inference_steps,
+            # output_type=args.output_type,
+            generator=torch.Generator(device="cuda").manual_seed(42),
+        )
     end_time = time.time()
     parallel_info = (
         # f"dp{args.data_parallel_degree}_cfg{engine_config.parallel_config.cfg_degree}_"
@@ -218,7 +285,9 @@ def main():
         image.save(f"./results/SD3_result_{parallel_info}_rank{local_rank}.png")
         print(f"image saved to ./results/SD3_result_{parallel_info}_rank{local_rank}.png")
         if get_world_group().rank == get_world_group().world_size - 1:
-            print(f"used time: {end_time-start_time:.2f} seconds")
+            print(f"used time: {(end_time-start_time)/3:.2f} seconds")
+    
+    
 
 if __name__ == "__main__":
     main()

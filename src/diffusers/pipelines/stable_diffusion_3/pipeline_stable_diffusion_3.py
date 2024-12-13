@@ -22,8 +22,10 @@ from transformers import (
     T5EncoderModel,
     T5TokenizerFast,
 )
+
 from loguru import logger
 import torch.distributed as dist
+
 from ...image_processor import VaeImageProcessor
 from ...loaders import FromSingleFileMixin, SD3LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
@@ -881,6 +883,8 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
 
+        
+
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
@@ -977,6 +981,8 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             generator,
             latents,
         )
+
+        
 
         # 6. Denoising loop
         num_pipeline_warmup_steps = 1
@@ -1232,8 +1238,11 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                     self.shipment.update({"encoder_hidden_states": next_encoder_hidden_states})
                 if not is_pipeline_last_stage() or i != len(timesteps) - 1:
                     self.shipment.update({"hidden_states": patch_latents[patch_idx]})
-                self.post_office.send_shipment(self.shipment)
-                self.shipment.clear()
+                if is_pipeline_last_stage() and i == len(timesteps) - 1:
+                    pass
+                else:
+                    self.post_office.send_shipment(self.shipment)
+                    self.shipment.clear()
 
                 get_runtime_state().next_patch()
 
