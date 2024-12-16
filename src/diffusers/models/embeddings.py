@@ -498,7 +498,6 @@ class PatchEmbed(nn.Module):
             grid_size = pos_embed_max_size
         else:
             grid_size = int(num_patches**0.5)
-
         if pos_embed_type is None:
             self.pos_embed = None
         elif pos_embed_type == "sincos":

@@ -15,7 +15,7 @@
 import math
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
-
+from diffusers.runtime_state import get_runtime_state
 import numpy as np
 import torch
 
@@ -355,7 +355,14 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         prev_sample = prev_sample.to(model_output.dtype)
 
         # upon completion increase step index by one
-        self._step_index += 1
+        # self._step_index += 1
+        if (
+            not get_runtime_state().patch_mode
+            or get_runtime_state().pipeline_patch_idx
+            == get_runtime_state().num_pipeline_patch - 1
+        ):
+            self._step_index += 1
+
 
         if not return_dict:
             return (prev_sample,)
