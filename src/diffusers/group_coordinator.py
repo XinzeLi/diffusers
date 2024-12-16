@@ -80,6 +80,8 @@ class GroupCoordinator:
         torch.distributed.all_gather_into_tensor(
             output_tensor, input_, group=self.device_group
         )
+        from loguru import logger
+        logger.info(f"the group is {self.device_group=}")
         if dim != 0:
             output_tensor = output_tensor.movedim(0, dim)
 

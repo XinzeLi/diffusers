@@ -214,14 +214,14 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         
         self.pp_degree = get_pp_group().world_size
         self.local_rank = get_pp_group().local_rank
-
+        import os
         # import sys;import pdb;debug=pdb.Pdb(stdin=sys.__stdin__, stdout=sys.__stdout__);debug.set_trace()
         self.parallel_ctx = TorchBasedParallelContext(
             # ranks=list(range(self.world_size * get_cfg_group().world_size)),
-            ranks=get_pp_group().ranks,
+            ranks=get_world_group().ranks,
             pipeline_parallel_size=self.pp_degree,
-            # tensor_parallel_size=get_cfg_group().world_size,
-            device_index=get_pp_group().local_rank,
+            tensor_parallel_size=get_cfg_group().world_size,
+            device_index=int(os.environ.get("LOCAL_RANK", "0"))
         )
         self.post_office = PostalService(self.parallel_ctx)
         self.shipment = Shipment(self.parallel_ctx.torch_device())
@@ -985,7 +985,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             generator,
             latents,
         )
-
+        # torch.cuda.synchronize()
         
 
         # 6. Denoising loop
@@ -999,7 +999,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                     prompt_embeds=prompt_embeds,
                     pooled_prompt_embeds=pooled_prompt_embeds,
                     timesteps=timesteps[:num_pipeline_warmup_steps],
-                    num_warmup_steps=num_warmup_steps,
+                    num_warmup_steps=num_pipeline_warmup_steps,
                     progress_bar=progress_bar,
                     callback_on_step_end=callback_on_step_end,
                     callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
@@ -1088,6 +1088,14 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 elif not i == 0:
                     latents = self.post_office.recv_shipment().content["hidden_states"]
             # for the first timestep of the first stage, need not recv anything.
+            # if get_pipeline_parallel_world_size() > 1:
+            #     if i == 0:
+            #         if not is_pipeline_first_stage():
+            #             package = self.post_office.recv_shipment()
+            #             latents = package.content["hidden_states"]
+            #             encoder_hidden_states = package.content["encoder_hidden_states"]
+            #         elif not i == 0:
+            #             latents = self.post_office.recv_shipment().content["hidden_states"]
 
             latents, encoder_hidden_states = self._backbone_forward(
                 latents=latents,
@@ -1133,8 +1141,11 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
 
             if get_pipeline_parallel_world_size() > 1:
                 if is_pipeline_last_stage():
-                    self.shipment.update({"hidden_states": latents})
-                    self.post_office.send_shipment(self.shipment)
+                    if i == self._num_timesteps-1:
+                        pass
+                    else:
+                        self.shipment.update({"hidden_states": latents})
+                        self.post_office.send_shipment(self.shipment)
                 else:
                     self.shipment.update({"hidden_states": latents})
                     self.shipment.update({"encoder_hidden_states": encoder_hidden_states})
@@ -1303,5 +1314,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             )
         else:
             latents = noise_pred
+
+        # torch.cuda.synchronize()
 
         return latents, encoder_hidden_states
