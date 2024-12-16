@@ -401,7 +401,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         # encoder_hidden_states = self.context_embedder(encoder_hidden_states)
         temb = self.time_text_embed(timestep, pooled_projections)
         if is_pipeline_first_stage(): # only pp rank 0 needs patchify
-            #import sys;import pdb;debug=pdb.Pdb(stdin=sys.__stdin__, stdout=sys.__stdout__);debug.set_trace()
+            # import sys;import pdb;debug=pdb.Pdb(stdin=sys.__stdin__, stdout=sys.__stdout__);debug.set_trace()
             hidden_states = self.pos_embed(hidden_states)
             encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 

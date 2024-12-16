@@ -211,13 +211,17 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
     ):
         super().__init__()
         # ---------------ADD BELOW---------------
-        self.world_size = get_pp_group().world_size
+        
+        self.pp_degree = get_pp_group().world_size
         self.local_rank = get_pp_group().local_rank
 
+        # import sys;import pdb;debug=pdb.Pdb(stdin=sys.__stdin__, stdout=sys.__stdout__);debug.set_trace()
         self.parallel_ctx = TorchBasedParallelContext(
-            ranks=list(range(self.world_size)),
-            pipeline_parallel_size=self.world_size,
-            device_index=self.local_rank,
+            # ranks=list(range(self.world_size * get_cfg_group().world_size)),
+            ranks=get_pp_group().ranks,
+            pipeline_parallel_size=self.pp_degree,
+            # tensor_parallel_size=get_cfg_group().world_size,
+            device_index=get_pp_group().local_rank,
         )
         self.post_office = PostalService(self.parallel_ctx)
         self.shipment = Shipment(self.parallel_ctx.torch_device())
@@ -1170,6 +1174,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         num_pipeline_patch = get_pp_group().world_size
         last_patch_latents = [None for _ in range(num_pipeline_patch)] # xinze: we need it to step.
         for i, t in enumerate(timesteps):
+            print(f"it is running asynchrounsly!!!!!")
             for patch_idx in range(num_pipeline_patch):
                 if is_pipeline_last_stage():
                     last_patch_latents[patch_idx] = patch_latents[patch_idx]
@@ -1292,6 +1297,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 noise_pred_uncond, noise_pred_text = get_cfg_group().all_gather(
                     noise_pred, separate_tensors=True
                 )
+                print(f"the cfg group {get_cfg_group().ranks} is all gathering")
             latents = noise_pred_uncond + self.guidance_scale * (
                 noise_pred_text - noise_pred_uncond
             )

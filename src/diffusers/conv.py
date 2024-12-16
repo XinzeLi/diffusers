@@ -27,7 +27,7 @@ class CustomConv2d(nn.Module):
     
     def sliced_forward(self, x: torch.Tensor) -> torch.Tensor:
         b, c, h, w = x.shape
-
+        # import sys;import pdb;debug=pdb.Pdb(stdin=sys.__stdin__, stdout=sys.__stdout__);debug.set_trace()
         stride = self.module.stride[0]
         padding = self.module.padding[0]
 

@@ -436,17 +436,18 @@ class PostalService:
     def send_shipment(self, shipment: Shipment):
         # Pack items before shipping
 
-        logger.info(f"{self.send_recv_comm_device=} is sending shape")
+        logger.info(f"{self.send_recv_comm_device=} is sending shape {len(shipment.buffer)}")
         self.parallel_ctx.send_to_next_stage(
             torch.tensor(
                 [len(shipment.buffer)], device=self.send_recv_comm_device
             )
         )
-        logger.info(f"{len(shipment.buffer)=} is sending")
+        logger.info(f"{len(shipment.buffer)=} is sending in {self.send_recv_comm_device}")
         self.parallel_ctx.send_to_next_stage(shipment.buffer)
-        #logger.info(f"Send: {shipment.buffer.shape=} is buffer")
+        logger.info(f"{self.send_recv_comm_device} has sended")
 
     def recv_shipment(self) -> Shipment:
+
         logger.info(f"{self.send_recv_comm_device=} is receiving shape")
         shipment_volume = torch.empty(
             [1],
@@ -455,7 +456,7 @@ class PostalService:
             requires_grad=False,
         )
         self.parallel_ctx.recv_from_prev_stage(shipment_volume)
-        logger.info(f"{shipment_volume=} is receiving")
+        logger.info(f"{shipment_volume=} is receiving in {self.send_recv_comm_device=}")
         
         buffer = torch.empty(
             shipment_volume.tolist(),
@@ -465,6 +466,7 @@ class PostalService:
         )
         self.parallel_ctx.recv_from_prev_stage(buffer)
         #logger.info(f"Receive: {buffer.shape=} is buffer")
+        logger.info(f"{self.send_recv_comm_device} has received!")
         return Shipment.from_buffer(buffer, self.parallel_ctx.torch_device())
 
     def exchange_shipment(self, shipment: Shipment) -> Shipment:

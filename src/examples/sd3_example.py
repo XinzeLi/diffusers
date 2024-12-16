@@ -42,7 +42,7 @@ def convert_transformer(
     blocks_list = {
         block_name: getattr(transformer, block_name) for block_name in blocks_name
     }
-    print(f"the blocks list is {blocks_list}")
+    # print(f"the blocks list is {blocks_list}")
     num_blocks_list = [len(blocks) for blocks in blocks_list.values()]
     blocks_idx = {
         name: [sum(num_blocks_list[:i]), sum(num_blocks_list[: i + 1])]
@@ -100,8 +100,10 @@ def convert_transformer(
 def _change_layer(submodule):
     if isinstance(submodule, nn.Conv2d):
         return CustomConv2d(conv2d=submodule)
+        # return submodule
     elif isinstance(submodule, PatchEmbed):
         # print("YYYYYYYYYYY")
+        # import sys;import pdb;debug=pdb.Pdb(stdin=sys.__stdin__, stdout=sys.__stdout__);debug.set_trace()
         return CustomPatchEmbed(patch_embedding=submodule)
     else:
         return submodule
@@ -117,7 +119,7 @@ def change_conv_embed(model: nn.Module, submodule_classes_to_change=[nn.Conv2d, 
                 need_change = True
                 break
         if need_change:
-            print(f"the module {name} is changing!!!")
+            # print(f"the module {name} is changing!!!")
             new_layer = _change_layer(module)
             setattr(model, name, new_layer)
 
@@ -128,7 +130,7 @@ def change_conv_embed(model: nn.Module, submodule_classes_to_change=[nn.Conv2d, 
                     need_change = True
                     break
             if need_change:
-                print(f"the submodule {subname} is changing!!!")
+                # print(f"the submodule {subname} is changing!!!")
                 new_layer = _change_layer(submodule)
                 setattr(module, subname, new_layer)
 
@@ -252,6 +254,7 @@ def main():
         pipe.transformer = convert_transformer(pipe.transformer)
         pipe.transformer = change_conv_embed(model=pipe.transformer)
     
+    args.num_inference_steps = 20
     # pipe.prepare_run(input_config)
     output = pipe(
         height=1024,
@@ -261,7 +264,7 @@ def main():
         # output_type=args.output_type,
         generator=torch.Generator(device="cuda").manual_seed(42),
     )
-    
+
     start_time = time.time()
     for i in range(3):
         output = pipe(
