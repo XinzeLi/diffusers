@@ -283,7 +283,6 @@ class PatchEmbed(nn.Module):
             grid_size = pos_embed_max_size
         else:
             grid_size = int(num_patches**0.5)
-        # import sys;import pdb;debug=pdb.Pdb(stdin=sys.__stdin__, stdout=sys.__stdout__);debug.set_trace()
         if pos_embed_type is None:
             self.pos_embed = None
         elif pos_embed_type == "sincos":
@@ -313,7 +312,6 @@ class PatchEmbed(nn.Module):
 
         top = (self.pos_embed_max_size - height) // 2
         left = (self.pos_embed_max_size - width) // 2
-        # import sys;import pdb;debug=pdb.Pdb(stdin=sys.__stdin__, stdout=sys.__stdout__);debug.set_trace()
         spatial_pos_embed = self.pos_embed.reshape(1, self.pos_embed_max_size, self.pos_embed_max_size, -1)
         spatial_pos_embed = spatial_pos_embed[:, top : top + height, left : left + width, :]
         spatial_pos_embed = spatial_pos_embed.reshape(1, -1, spatial_pos_embed.shape[-1])

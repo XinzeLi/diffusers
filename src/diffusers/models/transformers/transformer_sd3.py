@@ -389,6 +389,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
         patch_size = self.config.patch_size
+        # ------------------MODIFIED HERE----------------
         # height, width = hidden_states.shape[-2:]
         height, width = get_runtime_state().config.height, get_runtime_state().config.width
         height = height // (patch_size * 8) # 8 is vae scale factor
@@ -401,7 +402,6 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         # encoder_hidden_states = self.context_embedder(encoder_hidden_states)
         temb = self.time_text_embed(timestep, pooled_projections)
         if is_pipeline_first_stage(): # only pp rank 0 needs patchify
-            # import sys;import pdb;debug=pdb.Pdb(stdin=sys.__stdin__, stdout=sys.__stdout__);debug.set_trace()
             hidden_states = self.pos_embed(hidden_states)
             encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
@@ -493,6 +493,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 # remove `lora_scale` from each PEFT layer
                 unscale_lora_layers(self, lora_scale)
         else:
+            # if not last stage, then we need intermediate encoder hidden states.
             output = hidden_states, encoder_hidden_states
 
         if not return_dict:

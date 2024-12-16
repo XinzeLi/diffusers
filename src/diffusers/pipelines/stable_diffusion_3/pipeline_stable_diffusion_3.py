@@ -215,9 +215,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         self.pp_degree = get_pp_group().world_size
         self.local_rank = get_pp_group().local_rank
         import os
-        # import sys;import pdb;debug=pdb.Pdb(stdin=sys.__stdin__, stdout=sys.__stdout__);debug.set_trace()
         self.parallel_ctx = TorchBasedParallelContext(
-            # ranks=list(range(self.world_size * get_cfg_group().world_size)),
             ranks=get_world_group().ranks,
             pipeline_parallel_size=self.pp_degree,
             tensor_parallel_size=get_cfg_group().world_size,
@@ -956,6 +954,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         #         original_pooled_prompt_embeds = pooled_prompt_embeds
         #     prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
         #     pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
+        # --------------- MODIFIED HERE --------------
         if self.do_classifier_free_guidance:
             (
                 prompt_embeds,
@@ -972,7 +971,6 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
-        print(f"the number of timesteps is {self._num_timesteps}")
         # 5. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
         latents = self.prepare_latents(
@@ -1038,7 +1036,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
 
         #     image = self.vae.decode(latents, return_dict=False)[0]
         #     image = self.image_processor.postprocess(image, output_type=output_type)
-
+        # ------------------MODIFIED HERE---------------
         if not output_type == "latent":
             if is_pipeline_last_stage():
                 latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
@@ -1088,14 +1086,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 elif not i == 0:
                     latents = self.post_office.recv_shipment().content["hidden_states"]
             # for the first timestep of the first stage, need not recv anything.
-            # if get_pipeline_parallel_world_size() > 1:
-            #     if i == 0:
-            #         if not is_pipeline_first_stage():
-            #             package = self.post_office.recv_shipment()
-            #             latents = package.content["hidden_states"]
-            #             encoder_hidden_states = package.content["encoder_hidden_states"]
-            #         elif not i == 0:
-            #             latents = self.post_office.recv_shipment().content["hidden_states"]
+
 
             latents, encoder_hidden_states = self._backbone_forward(
                 latents=latents,
@@ -1158,6 +1149,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         self,
         latents: torch.Tensor,
     ):
+        # split the latents into patches.
         get_runtime_state().set_patch_mode(patch_mode=True)
         if is_pipeline_first_stage():
             latents = self.post_office.recv_shipment().content["hidden_states"]
@@ -1181,22 +1173,14 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         num_pipeline_warmup_steps=1,
     ):
-        patch_latents = self._init_async_pipeline(latents=latents) # xinze: ensure each pipe stage has the right data
+        patch_latents = self._init_async_pipeline(latents=latents)
         num_pipeline_patch = get_pp_group().world_size
-        last_patch_latents = [None for _ in range(num_pipeline_patch)] # xinze: we need it to step.
+        last_patch_latents = [None for _ in range(num_pipeline_patch)] # xinze: we need it for scheduler to do stepping.
         for i, t in enumerate(timesteps):
-            print(f"it is running asynchrounsly!!!!!")
             for patch_idx in range(num_pipeline_patch):
                 if is_pipeline_last_stage():
                     last_patch_latents[patch_idx] = patch_latents[patch_idx]
 
-                # if not is_pipeline_first_stage() and patch_idx == 0:
-                #     last_encoder_hidden_states = self.post_office.recv_shipment().content["encoder_hidden_states"]
-
-                # if is_pipeline_first_stage() and i == 0:
-                #     pass
-                # else:
-                #     patch_latents[patch_idx] = self.post_office.recv_shipment().content["hidden_states"]
 
                 if is_pipeline_first_stage() and i == 0:
                     pass
@@ -1308,13 +1292,10 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 noise_pred_uncond, noise_pred_text = get_cfg_group().all_gather(
                     noise_pred, separate_tensors=True
                 )
-                print(f"the cfg group {get_cfg_group().ranks} is all gathering")
             latents = noise_pred_uncond + self.guidance_scale * (
                 noise_pred_text - noise_pred_uncond
             )
         else:
             latents = noise_pred
-
-        # torch.cuda.synchronize()
 
         return latents, encoder_hidden_states

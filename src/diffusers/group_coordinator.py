@@ -23,9 +23,9 @@ class GroupCoordinator:
     # Process | Node | Rank | Local Rank | Rank in Group
     #   0     |   0  |  0   |     0      |       0
     #   1     |   0  |  1   |     1      |       1
-    #   2     |   1  |  2   |     0      |       2
-    #   3     |   1  |  3   |     1      |       3
-    local_rank: int  # local rank used to assign devices
+    #   2     |   1  |  2   |     2      |       0
+    #   3     |   1  |  3   |     3      |       1
+    #     local_rank: int  # local rank used to assign devices
     rank_in_group: int  # rank inside the group
     cpu_group: ProcessGroup  # group for CPU communication
     device_group: ProcessGroup  # group for device communication
@@ -80,8 +80,6 @@ class GroupCoordinator:
         torch.distributed.all_gather_into_tensor(
             output_tensor, input_, group=self.device_group
         )
-        from loguru import logger
-        logger.info(f"the group is {self.device_group=}")
         if dim != 0:
             output_tensor = output_tensor.movedim(0, dim)
 

@@ -15,19 +15,11 @@ class CustomConv2d(nn.Module):
         self.activation_cache = None
 
     def naive_forward(self, x: torch.Tensor) -> torch.Tensor:
-        #  x: [B, C, H, W]
         output = self.module(x)
         return output
     
-    # def __call__(self, *args, **kwargs):
-    #     if self.module is None:
-    #         self.module = self.origin_conv2d(*args, **kwargs)
-    #     logger.info(f"the key word are {kwargs=}")
-    #     return self
-    
     def sliced_forward(self, x: torch.Tensor) -> torch.Tensor:
         b, c, h, w = x.shape
-        # import sys;import pdb;debug=pdb.Pdb(stdin=sys.__stdin__, stdout=sys.__stdout__);debug.set_trace()
         stride = self.module.stride[0]
         padding = self.module.padding[0]
 
@@ -54,7 +46,6 @@ class CustomConv2d(nn.Module):
         return result
     
     def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
-        #import sys;import pdb;debug=pdb.Pdb(stdin=sys.__stdin__, stdout=sys.__stdout__);debug.set_trace()
         if (
             (
                 get_pipeline_parallel_world_size() == 1

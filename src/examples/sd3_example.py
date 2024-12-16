@@ -1,17 +1,15 @@
 import time
 import os
 import torch
-import torch.distributed
+import torch.distributed as dist
 from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3 import StableDiffusion3Pipeline
 import argparse
-# from distvae.modules.adapters.vae.decoder_adapters import DecoderAdapter
 from diffusers.group_coordinator import (
     GroupCoordinator, 
     RankGenerator, 
     SequenceParallelGroupCoordinator, 
     PipelineParallelGroupCoordinator,
 )
-from deepspeed.module_inject import replace_module
 from diffusers.runtime_state import initialize_runtime_state, get_runtime_state
 from typing import Any, Dict, List, Optional, Tuple, Union
 from torch import nn
@@ -42,7 +40,6 @@ def convert_transformer(
     blocks_list = {
         block_name: getattr(transformer, block_name) for block_name in blocks_name
     }
-    # print(f"the blocks list is {blocks_list}")
     num_blocks_list = [len(blocks) for blocks in blocks_list.values()]
     blocks_idx = {
         name: [sum(num_blocks_list[:i]), sum(num_blocks_list[: i + 1])]
@@ -74,7 +71,6 @@ def convert_transformer(
                     name,
                     blocks_list[name][: -(blocks_end - stage_block_end_idx)],
                 )
-                # self.stage_info.after_flags[name] = False
         elif blocks_start < stage_block_start_idx:
             if blocks_end <= stage_block_end_idx:
                 setattr(
@@ -82,7 +78,6 @@ def convert_transformer(
                     name,
                     blocks_list[name][stage_block_start_idx - blocks_start :],
                 )
-                # self.stage_info.after_flags[name] = True
             else:  # blocks_end > stage_layer_end_idx
                 setattr(
                     transformer,
@@ -93,17 +88,13 @@ def convert_transformer(
                         - blocks_end
                     ],
                 )
-                # self.stage_info.after_flags[name] = False
 
     return transformer
 
 def _change_layer(submodule):
     if isinstance(submodule, nn.Conv2d):
         return CustomConv2d(conv2d=submodule)
-        # return submodule
     elif isinstance(submodule, PatchEmbed):
-        # print("YYYYYYYYYYY")
-        # import sys;import pdb;debug=pdb.Pdb(stdin=sys.__stdin__, stdout=sys.__stdout__);debug.set_trace()
         return CustomPatchEmbed(patch_embedding=submodule)
     else:
         return submodule
@@ -119,7 +110,6 @@ def change_conv_embed(model: nn.Module, submodule_classes_to_change=[nn.Conv2d, 
                 need_change = True
                 break
         if need_change:
-            # print(f"the module {name} is changing!!!")
             new_layer = _change_layer(module)
             setattr(model, name, new_layer)
 
@@ -130,12 +120,9 @@ def change_conv_embed(model: nn.Module, submodule_classes_to_change=[nn.Conv2d, 
                     need_change = True
                     break
             if need_change:
-                # print(f"the submodule {subname} is changing!!!")
                 new_layer = _change_layer(submodule)
                 setattr(module, subname, new_layer)
 
-    # model = replace_module(model=model, orig_class=nn.Conv2d, replace_fn=_change_layer)
-    # model = replace_module(model=model, orig_class=PatchEmbed, replace_fn=_change_layer)
 
     return model
 
@@ -216,12 +203,6 @@ def main():
     
     
     
-    # raise Exception(f"use_parallel_Vae is {use_parallel_vae}")
-    
-    # torch.cuda.synchronize(device=local_rank)
-    # print(f"the world size is {torch.distributed.get_world_size()}")
-    # print(f"Ulysses degree is {ulysses_degree}, ring degree is {ring_degree}, PP degree is {PP_degree}")
-    # print(f"the local rank is {local_rank}")
     
     initialize_model_parallel(
         classifier_free_guidance_degree=cfg_degree,
@@ -229,24 +210,19 @@ def main():
         ring_degree=ring_degree,
         pipeline_parallel_degree=PP_degree,
     )
-    initialize_runtime_state(engine_config=args)
+    
 
-    # origin_conv2d = nn.Conv2d
-    # nn.Conv2d = CustomConv2d(conv2d=origin_conv2d)
-    # origin_PatchEmbed = embeddings.PatchEmbed
-    # embeddings.PatchEmbed = CustomPatchEmbed(patch_embedding=origin_PatchEmbed)
 
     local_rank= int(os.environ.get("LOCAL_RANK", "0"))
     pipe = StableDiffusion3Pipeline.from_pretrained(
         pretrained_model_name_or_path=args.model,
-        # engine_config=engine_config,
         torch_dtype=torch.float16,
         use_parallel_vae=use_parallel_vae,
         PP_degree=PP_degree,
         ulysses_degree=ulysses_degree,
         ring_degree=ring_degree,
     ).to(f"cuda:{local_rank}")
-    
+    initialize_runtime_state(pipeline=pipe, engine_config=args)
     
     
 
@@ -255,13 +231,11 @@ def main():
         pipe.transformer = change_conv_embed(model=pipe.transformer)
     
     args.num_inference_steps = 20
-    # pipe.prepare_run(input_config)
     output = pipe(
         height=1024,
         width=1024,
         prompt=args.prompt,
         num_inference_steps=args.num_inference_steps,
-        # output_type=args.output_type,
         generator=torch.Generator(device="cuda").manual_seed(42),
     )
 
@@ -272,12 +246,10 @@ def main():
             width=1024,
             prompt=args.prompt,
             num_inference_steps=args.num_inference_steps,
-            # output_type=args.output_type,
             generator=torch.Generator(device="cuda").manual_seed(42),
         )
     end_time = time.time()
     parallel_info = (
-        # f"dp{args.data_parallel_degree}_cfg{engine_config.parallel_config.cfg_degree}_"
         f"ulysses{args.ulysses_degree}_ring{args.ring_degree}_"
         f"pp{args.pipefusion_parallel_degree}"
     )
@@ -289,6 +261,9 @@ def main():
         print(f"image saved to ./results/SD3_result_{parallel_info}_rank{local_rank}.png")
         if get_world_group().rank == get_world_group().world_size - 1:
             print(f"used time: {(end_time-start_time)/3:.2f} seconds")
+    dist.barrier()
+    dist.destroy_process_group()
+    
     
     
 

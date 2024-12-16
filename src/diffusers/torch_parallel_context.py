@@ -144,7 +144,6 @@ class TorchBasedParallelContext(ParallelContext):
                 group_ranks = torch.distributed.get_process_group_ranks(
                     self._pipeline_parallel_group
                 )
-                # import sys;import pdb;debug=pdb.Pdb(stdin=sys.__stdin__, stdout=sys.__stdout__);debug.set_trace()
                 self._pipeline_stage_id = group_ranks.index(self._rank)
                 self._pipeline_parallel_group_prev_rank = group_ranks[
                     (self._pipeline_stage_id - 1 + self._pipeline_parallel_size) % self._pipeline_parallel_size
@@ -152,14 +151,10 @@ class TorchBasedParallelContext(ParallelContext):
                 self._pipeline_parallel_group_next_rank = group_ranks[
                     (self._pipeline_stage_id + 1) % self._pipeline_parallel_size
                 ]
-                from loguru import logger
-                logger.info(f"the rank now is {self._rank=}, the group is {self._pipeline_parallel_group=}, the next rank is {self._pipeline_parallel_group_next_rank=}, the last rank is {self._pipeline_parallel_group_prev_rank=}")
 
     def _init_tensor_parallel_group(self):
         if self.size > 1:
             self._tensor_parallel_group = self._new_group(self._tensor_parallel_size)
-            from loguru import logger
-            logger.info(f"the tp group is {self._tensor_parallel_group}")
             if self._tensor_parallel_group is not None:
                 group_ranks = torch.distributed.get_process_group_ranks(
                     self._tensor_parallel_group
@@ -283,12 +278,11 @@ class TorchBasedParallelContext(ParallelContext):
                 group=self.pipeline_parallel_group,
             )
             p2p_ops.append(recv_op)
-        logger.info(f"the current divice is {self._device_index=}, recving from {self._pipeline_parallel_group_prev_rank=}, in group {self.pipeline_parallel_group}")
+        # logger.info(f"the current divice is {self._device_index=}, recving from {self._pipeline_parallel_group_prev_rank=}, in group {self.pipeline_parallel_group}")
         if len(p2p_ops) > 0:
             reqs = torch.distributed.batch_isend_irecv(p2p_ops)
             for req in reqs:
                 req.wait()
-        # torch.cuda.synchronize()
 
     def send_to_next_stage(
         self, send_tensors: Union[torch.Tensor, Sequence[torch.Tensor]]
@@ -308,12 +302,11 @@ class TorchBasedParallelContext(ParallelContext):
                 group=self.pipeline_parallel_group,
             )
             p2p_ops.append(send_op)
-        logger.info(f"the current divice is {self._device_index=}, sending to {self._pipeline_parallel_group_next_rank=}, in group {self.pipeline_parallel_group=}")
+        # logger.info(f"the current divice is {self._device_index=}, sending to {self._pipeline_parallel_group_next_rank=}, in group {self.pipeline_parallel_group=}")
         if len(p2p_ops) > 0:
             reqs = torch.distributed.batch_isend_irecv(p2p_ops)
             for req in reqs:
                 req.wait()
-        # torch.cuda.synchronize()
 
     def send_and_recv_between_neighborhoods(
         self,

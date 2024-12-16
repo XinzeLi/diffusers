@@ -151,10 +151,10 @@ class JointTransformerBlock(nn.Module):
             qk_norm=qk_norm,
             eps=1e-6,
         )
+        # add kv cache here!
         from diffusers.cache_manager import get_cache_manager
 
         get_cache_manager().register_cache_entry(layer=self.attn, layer_type="attn")
-        # import sys;import pdb;debug=pdb.Pdb(stdin=sys.__stdin__, stdout=sys.__stdout__);debug.set_trace()
 
         if use_dual_attention:
             self.attn2 = Attention(
